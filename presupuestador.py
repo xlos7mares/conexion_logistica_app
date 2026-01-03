@@ -2,99 +2,86 @@ import streamlit as st
 from fpdf import FPDF
 import datetime
 
-# Configuración de página con la estética de Conexión Logística Sur
-st.set_page_config(page_title="Oficina Virtual - CLS", page_icon="🚚")
+# --- CONFIGURACIÓN DE LA OFICINA VIRTUAL CLS ---
+st.set_page_config(page_title="Oficina Virtual CLS", page_icon="⚓", layout="wide")
 
-# Estilos CSS para profesionalizar la vista
-st.markdown("""
-    <style>
-    .main { background-color: #f5f7f9; }
-    .stButton>button { width: 100%; background-color: #004282; color: white; border-radius: 10px; height: 3em; font-weight: bold; }
-    .result-box { background-color: #ffffff; padding: 20px; border-radius: 15px; border-left: 5px solid #004282; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    </style>
-    """, unsafe_allow_html=True)
+# Base de datos completa de Uruguay
+UBICACIONES = {
+    "Artigas": ["Artigas Ciudad", "Bella Unión", "Baltasar Brum"],
+    "Canelones": ["Canelones Ciudad", "Santa Lucía", "Pando", "Atlántida", "Ciudad de la Costa", "Las Piedras"],
+    "Cerro Largo": ["Melo", "Río Branco"],
+    "Colonia": ["Colonia del Sacramento", "Carmelo", "Nueva Helvecia", "Rosario", "Nueva Palmira"],
+    "Durazno": ["Durazno Ciudad", "Sarandí del Yí"],
+    "Flores": ["Trinidad"],
+    "Florida": ["Florida Ciudad", "Sarandí Grande"],
+    "Lavalleja": ["Minas", "José Pedro Varela"],
+    "Maldonado": ["Maldonado Ciudad", "Punta del Este", "Piriápolis", "San Carlos", "Pan de Azúcar", "José Ignacio"],
+    "Montevideo": ["Centro", "Carrasco", "Paso de la Arena", "Pocitos", "Prado", "Cerro"],
+    "Paysandú": ["Paysandú Ciudad", "Guichón", "Quebracho", "Piedras Coloradas"],
+    "Río Negro": ["Fray Bentos", "Young"],
+    "Rivera": ["Rivera Ciudad", "Vichadero"],
+    "Rocha": ["Rocha Ciudad", "Chuy", "La Paloma", "Castillos", "Punta del Diablo"],
+    "Salto": ["Salto Ciudad", "Constitución"],
+    "San José": ["San José de Mayo", "Libertad", "Ciudad del Plata"],
+    "Soriano": ["Mercedes", "Dolores", "Cardona"],
+    "Tacuarembó": ["Tacuarembó Ciudad", "Paso de los Toros", "San Gregorio de Polanco"],
+    "Treinta y Tres": ["Treinta y Tres Ciudad", "Vergara"]
+}
 
-st.title("🚢 Conexión Logística Sur")
-st.subheader("Cotizador Inteligente de Transporte - Operativa 2026")
+st.title("⚓ CONEXIÓN LOGÍSTICA SUR")
+st.subheader("Oficina Digital 2026 - Gestión: Leonardo Olivera")
 
 # --- ENTRADA DE DATOS ---
-with st.expander("📝 Datos del Servicio", expanded=True):
-    servicio = st.selectbox("Tipo de Carga", 
-                            ["Remolque de Embarcación", "Flete Estándar", "Mudanza Residencial", "Maquinaria"])
-    
+with st.container():
     col1, col2 = st.columns(2)
     with col1:
-        origen = st.text_input("Ciudad de Origen", "Paysandú")
+        depto_o = st.selectbox("Departamento Origen", list(UBICACIONES.keys()), index=10) # Paysandú
+        ciudad_o = st.selectbox("Localidad Origen", UBICACIONES[depto_o])
+        depto_d = st.selectbox("Departamento Destino", list(UBICACIONES.keys()), index=8) # Maldonado
+        ciudad_d = st.selectbox("Localidad Destino", UBICACIONES[depto_d])
+    
     with col2:
-        destino = st.text_input("Ciudad de Destino")
-        
-    distancia = st.number_input("Distancia solo ida (km)", min_value=1, value=1)
+        distancia_ida = st.number_input("Distancia solo ida (Km)", min_value=1, value=150)
+        tipo_servicio = st.selectbox("Tipo de Carga", ["Lancha hasta 27 pies", "Flete General", "Mudanza", "Maquinaria"])
+        usa_trailer = st.checkbox("Incluir Alquiler de Trailer CLS (+$2.500)")
+        es_premium = st.toggle("Servicio Premium (+15%)")
 
-# --- LÓGICA DE NEGOCIO (REGLAS DE GUSTAVO + TU INGENIERÍA) ---
-distancia_total = distancia * 2  # SE COBRA IDA Y VUELTA
-peaje_valor = 145
-num_peajes = (distancia // 130) + 1
-total_peajes = num_peajes * peaje_valor
+# --- LÓGICA GUSTAVO: Ida y Vuelta, $80/km si >= 150km ---
+distancia_total = distancia_ida * 2
+base_operativa = 6500
+peajes = ((distancia_ida // 130) + 1) * 145
 
-# Variables por defecto
-precio_km = 65
-base = 2500
-costo_trailer = 0
+if tipo_servicio == "Lancha hasta 27 pies":
+    precio_km = 80 if distancia_ida >= 150 else 110
+else:
+    precio_km = 75
 
-if servicio == "Remolque de Embarcación":
-    # Regla: 150km o más -> $80 el km. Menos de 150km -> $110 el km.
-    if distancia >= 150:
-        precio_km = 80
-    else:
-        precio_km = 110
-    
-    base = 6500
-    st.info("💡 Nota: Para lanchas hasta 27 pies. Se cobra trayecto completo (ida y vuelta).")
-    
-    alquiler_trailer = st.checkbox("¿Requiere alquiler de trailer de la empresa? (+$2500)")
-    costo_trailer = 2500 if alquiler_trailer else 0
+total = base_operativa + (distancia_total * precio_km) + peajes
+if usa_trailer: total += 2500
+if es_premium: total *= 1.15
 
-# Cálculo Final
-total_final = base + (distancia_total * precio_km) + costo_trailer + total_peajes
+st.success(f"## TOTAL ESTIMADO: ${int(total):,} UYU")
 
-# --- MOSTRAR RESULTADO ---
-st.markdown("---")
-st.markdown(f"""
-    <div class="result-box">
-        <p style="margin:0; color:#666;">PRESUPUESTO ESTIMADO 2026</p>
-        <h1 style="margin:0; color:#004282;">${int(total_final):,} UYU</h1>
-        <p style="font-size: 0.9em; color:#888;">*Incluye ida y vuelta, peajes y base operativa.</p>
-    </div>
-""", unsafe_allow_html=True)
-
-# --- GENERADOR DE PDF Y WHATSAPP ---
-def generar_pdf(total, serv, ori, dest, dist, trailer):
+# --- GENERADOR DE PDF ---
+def crear_pdf():
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, "CONEXION LOGISTICA SUR - OFICINA DIGITAL", ln=True, align='C')
-    pdf.ln(10)
+    pdf.cell(200, 10, "CONEXIÓN LOGÍSTICA SUR - PRESUPUESTO", ln=True, align='C')
     pdf.set_font("Arial", '', 12)
-    pdf.cell(200, 10, f"Fecha: {datetime.date.today()}", ln=True)
-    pdf.cell(200, 10, f"Servicio: {serv}", ln=True)
-    pdf.cell(200, 10, f"Ruta: {ori} -> {dest}", ln=True)
-    pdf.cell(200, 10, f"Distancia Total (Ida/Vuelta): {dist*2} km", ln=True)
-    if trailer > 0: pdf.cell(200, 10, "Incluye alquiler de trailer: SI", ln=True)
     pdf.ln(10)
+    pdf.cell(200, 10, f"Fecha: {datetime.date.today()}", ln=True)
+    pdf.cell(200, 10, f"Ruta: {ciudad_o} a {ciudad_d}", ln=True)
+    pdf.cell(200, 10, f"Servicio: {tipo_servicio}", ln=True)
+    pdf.cell(200, 10, f"Distancia Total Liquidada: {distancia_total} km (Ida y Vuelta)", ln=True)
+    pdf.ln(5)
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(200, 10, f"TOTAL: ${int(total)} UYU", ln=True)
-    pdf.ln(10)
-    pdf.set_font("Arial", 'I', 8)
-    pdf.multi_cell(0, 5, "AVISO: Los costos son aproximados. Pueden variar segun medidas reales de la embarcacion o imprevistos en ruta.")
+    pdf.ln(5)
+    pdf.set_font("Arial", 'I', 9)
+    pdf.multi_cell(0, 5, "Nota: Este presupuesto es una estimación oficial. Se cobra el trayecto completo desde la salida hasta el regreso a la base.")
     return pdf.output(dest='S').encode('latin-1')
 
-col_a, col_b = st.columns(2)
-
-with col_a:
-    pdf_bytes = generar_pdf(total_final, servicio, origen, destino, distancia, costo_trailer)
-    st.download_button("📥 Descargar PDF para el Cliente", data=pdf_bytes, file_name=f"Presupuesto_CLS_{destino}.pdf")
-
-with col_b:
-    msj_wa = f"Hola, solicito el servicio de {servicio} desde {origen} hasta {destino}. El presupuesto web fue de ${int(total_final)}."
-    st.link_button("💬 Confirmar por WhatsApp", f"https://wa.me/TU_NUMERO_AQUI?text={msj_wa}")
-    
+# --- BOTONES ---
+st.download_button("📥 DESCARGAR PRESUPUESTO PDF", data=crear_pdf(), file_name=f"Presupuesto_CLS_{ciudad_d}.pdf")
+st.link_button("🟢 CONSULTAR POR WHATSAPP", f"https://wa.me/59899123456?text=Hola, quiero reservar flete de {ciudad_o} a {ciudad_d}.")
