@@ -28,7 +28,6 @@ UBICACIONES = {
     "Treinta y Tres": ["Treinta y Tres Ciudad", "Vergara"]
 }
 
-
 st.title("⚓ CONEXIÓN LOGÍSTICA SUR")
 st.subheader("Oficina Digital 2026 - Gestión: Leonardo Olivera")
 
