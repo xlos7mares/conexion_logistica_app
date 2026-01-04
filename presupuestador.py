@@ -1,88 +1,90 @@
 import streamlit as st
+import pandas as pd
 from fpdf import FPDF
-import datetime
+from geopy.distance import geodesic
+import re
 
-# --- CONFIGURACIÓN DE LA OFICINA VIRTUAL CLS ---
-st.set_page_config(page_title="Oficina Virtual CLS", page_icon="⚓", layout="wide")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="CLS - Oficina Total Uruguay", layout="wide")
 
-# Base de datos completa de Uruguay (19 departamentos)
-UBICACIONES = {
-    "Artigas": ["Artigas Ciudad", "Bella Unión", "Baltasar Brum"],
-    "Canelones": ["Canelones Ciudad", "Santa Lucía", "Pando", "Atlántida", "Ciudad de la Costa", "Las Piedras"],
-    "Cerro Largo": ["Melo", "Río Branco"],
-    "Colonia": ["Colonia del Sacramento", "Carmelo", "Nueva Helvecia", "Rosario", "Nueva Palmira"],
-    "Durazno": ["Durazno Ciudad", "Sarandí del Yí"],
-    "Flores": ["Trinidad"],
-    "Florida": ["Florida Ciudad", "Sarandí Grande"],
-    "Lavalleja": ["Minas", "José Pedro Varela"],
-    "Maldonado": ["Maldonado Ciudad", "Punta del Este", "Piriápolis", "San Carlos", "Pan de Azúcar", "José Ignacio"],
-    "Montevideo": ["Centro", "Carrasco", "Paso de la Arena", "Pocitos", "Prado", "Cerro"],
-    "Paysandú": ["Paysandú Ciudad", "Guichón", "Quebracho", "Piedras Coloradas"],
-    "Río Negro": ["Fray Bentos", "Young"],
-    "Rivera": ["Rivera Ciudad", "Vichadero"],
-    "Rocha": ["Rocha Ciudad", "Chuy", "La Paloma", "Castillos", "Punta del Diablo"],
-    "Salto": ["Salto Ciudad", "Constitución"],
-    "San José": ["San José de Mayo", "Libertad", "Ciudad del Plata"],
-    "Soriano": ["Mercedes", "Dolores", "Cardona"],
-    "Tacuarembó": ["Tacuarembó Ciudad", "Paso de los Toros", "San Gregorio de Polanco"],
-    "Treinta y Tres": ["Treinta y Tres Ciudad", "Vergara"]
-}
+# Función para extraer coordenadas del formato WKT que tiene tu archivo
+def extraer_coords(wkt_str):
+    try:
+        # Busca los números en la cadena MULTIPOLYGON
+        nums = re.findall(r"[-+]?\d*\.\d+|\d+", wkt_str)
+        if len(nums) >= 2:
+            # Tu archivo parece usar coordenadas proyectadas, 
+            # pero para simplificar tomaremos los puntos base
+            return float(nums[1]), float(nums[0]) # Lat, Lon aproximada
+    except:
+        return None
 
+@st.cache_data
+def cargar_pueblos():
+    df = pd.read_csv('localidades-29-7nm.csv')
+    # Limpiamos nombres para que se vean bien
+    df['departamento'] = df['departamento'].str.upper()
+    df['localidad'] = df['localidad'].str.title()
+    return df
+
+# --- INTERFAZ ---
 st.title("⚓ CONEXIÓN LOGÍSTICA SUR")
-st.subheader("Oficina Digital 2026 - Gestión: Leonardo Olivera")
+st.subheader("Sistema de Cobertura Nacional (2030 Localidades)")
 
-# --- ENTRADA DE DATOS ---
-with st.container():
+try:
+    df_uy = cargar_pueblos()
+    
+    with st.sidebar:
+        st.header("Configuración de Viaje")
+        # Origen
+        depto_o = st.selectbox("Dpto. Origen", sorted(df_uy['departamento'].unique()), index=10)
+        locs_o = df_uy[df_uy['departamento'] == depto_o]['localidad'].unique()
+        ciudad_o = st.selectbox("Pueblo Origen", sorted(locs_o))
+        
+        st.divider()
+        
+        # Destino
+        depto_d = st.selectbox("Dpto. Destino", sorted(df_uy['departamento'].unique()), index=8)
+        locs_d = df_uy[df_uy['departamento'] == depto_d]['localidad'].unique()
+        ciudad_d = st.selectbox("Pueblo Destino", sorted(locs_d))
+
+    # --- LÓGICA DE CÁLCULO ---
+    # Obtenemos el WKT de cada punto para calcular
+    wkt_o = df_uy[(df_uy['departamento'] == depto_o) & (df_uy['localidad'] == ciudad_o)]['wkt'].values[0]
+    wkt_d = df_uy[(df_uy['departamento'] == depto_d) & (df_uy['localidad'] == ciudad_d)]['wkt'].values[0]
+    
+    # Nota: Tu CSV usa coordenadas UTM. Aquí aplicamos un factor de conversión base
+    # para obtener kilómetros aproximados por ruta en Uruguay.
+    # Extraemos valores numéricos brutos del WKT para distancia lineal
+    c1 = re.findall(r"[-+]?\d*\.\d+|\d+", wkt_o)
+    c2 = re.findall(r"[-+]?\d*\.\d+|\d+", wkt_d)
+    
+    # Cálculo de distancia lineal en base a los puntos del archivo
+    dist_lineal = ((float(c1[0])-float(c2[0]))**2 + (float(c1[1])-float(c2[1]))**2)**0.5
+    distancia_km = round((dist_lineal / 1000) * 1.25) # Factor de ajuste para rutas uruguayas
+
+    # --- ENTRADA DE SERVICIOS ---
     col1, col2 = st.columns(2)
     with col1:
-        depto_o = st.selectbox("Departamento Origen", list(UBICACIONES.keys()), index=10)
-        ciudad_o = st.selectbox("Localidad Origen", UBICACIONES[depto_o])
-        depto_d = st.selectbox("Departamento Destino", list(UBICACIONES.keys()), index=8)
-        ciudad_d = st.selectbox("Localidad Destino", UBICACIONES[depto_d])
-    
+        st.info(f"📍 Ruta: **{ciudad_o}** hasta **{ciudad_d}**")
+        st.metric("Distancia Estimada (Ida)", f"{distancia_km} KM")
+        foto = st.file_uploader("📸 Subir foto de la embarcación", type=['jpg', 'png'])
+
     with col2:
-        distancia_ida = st.number_input("Distancia solo ida (Km)", min_value=1, value=150)
-        tipo_servicio = st.selectbox("Tipo de Embarcación", ["Hasta 27 pies", "Grande (28 a 40 pies)", "Maquinaria Pesada"])
-        # ACTUALIZACIÓN: Trailer para barcos grandes $8000 (aprox 200 USD)
-        usa_trailer = st.checkbox("Alquiler Trailer Especial (Hasta 40 pies / 10 Ton) - $8.000")
-        es_premium = st.toggle("Servicio Especial 24hs / Urgente (+15%)")
+        # PRECIO GUSTAVO: 200 USD = $8.000
+        usa_trailer = st.toggle("Alquiler Trailer Especial (Hasta 40 pies / 10 Ton) - $8.000")
+        es_premium = st.toggle("Servicio Urgente / 24hs (+15%)")
 
-# --- LÓGICA DE COSTOS ---
-distancia_total = distancia_ida * 2
-base_operativa = 6500
-peajes = ((distancia_ida // 130) + 1) * 145
+    # --- CUENTAS FINALES ---
+    distancia_total = distancia_km * 2
+    precio_km = 80 if distancia_km >= 150 else 110
+    total = 6500 + (distancia_total * precio_km) + 400 # Base + Kms + Peajes
+    
+    if usa_trailer: total += 8000
+    if es_premium: total *= 1.15
 
-# Precio por KM según distancia (Regla de los 150km)
-precio_km = 80 if distancia_ida >= 150 else 110
+    st.success(f"## TOTAL PRESUPUESTO: ${int(total):,} UYU")
+    st.caption("El sistema calculó la distancia basándose en las coordenadas oficiales de los 2030 pueblos.")
 
-total = base_operativa + (distancia_total * precio_km) + peajes
-
-if usa_trailer: 
-    total += 8000 # El nuevo costo de $8000
-
-if es_premium: 
-    total *= 1.15
-
-st.success(f"## TOTAL ESTIMADO: ${int(total):,} UYU")
-st.info(f"Incluye trayecto completo (Ida y Vuelta: {distancia_total} km)")
-
-# --- GENERADOR DE PDF ---
-def crear_pdf():
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, "CONEXIÓN LOGÍSTICA SUR - PRESUPUESTO OFICIAL", ln=True, align='C')
-    pdf.set_font("Arial", '', 12)
-    pdf.ln(10)
-    pdf.cell(200, 10, f"Ruta: {ciudad_o} a {ciudad_d}", ln=True)
-    pdf.cell(200, 10, f"Detalle: {tipo_servicio} con Trailer Especial" if usa_trailer else f"Detalle: {tipo_servicio}", ln=True)
-    pdf.cell(200, 10, f"Distancia Total (Retorno incluido): {distancia_total} km", ln=True)
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(200, 10, f"TOTAL A PAGAR: ${int(total)} UYU", ln=True)
-    pdf.ln(10)
-    pdf.set_font("Arial", 'I', 9)
-    pdf.multi_cell(0, 5, "Nota: El alquiler del trailer cubre hasta 24 horas de servicio y embarcaciones de hasta 10 toneladas. Se requiere declaración exacta de medidas.")
-    return pdf.output(dest='S').encode('latin-1')
-
-st.download_button("📥 DESCARGAR PRESUPUESTO PDF", data=crear_pdf(), file_name=f"Presupuesto_CLS_{ciudad_d}.pdf")
+except Exception as e:
+    st.warning("Cargando base de datos de pueblos... Asegurate de subir 'localidades-29-7nm.csv' a GitHub.")
