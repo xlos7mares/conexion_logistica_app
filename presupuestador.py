@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 import re
+import urllib.parse
 
 # --- CONFIGURACIÓN DE LA OFICINA VIRTUAL CLS ---
 st.set_page_config(page_title="Cotizador CLS 2026", page_icon="⚓", layout="wide")
@@ -14,17 +15,16 @@ def cargar_pueblos():
         df['localidad'] = df['localidad'].str.title()
         return df
     except:
-        st.error("⚠️ Error: No se encontró el archivo 'localidades-29-7nm.csv'. Por favor, asegúrate de subirlo a tu repositorio de GitHub.")
+        st.error("⚠️ Error: No se encontró el archivo 'localidades-29-7nm.csv'. Por favor, asegúrate de que el archivo esté en GitHub.")
         st.stop()
 
-# --- TÍTULO INSTITUCIONAL (Sin nombre personal) ---
 st.title("⚓ CONEXIÓN LOGÍSTICA SUR")
 st.subheader("Cotizador Oficial de Servicios 2026")
 
 df_uy = cargar_pueblos()
 
 # --- SELECCIÓN DE RUTA ---
-with st.expander("1. Origen y Destino (Cobertura Nacional)", expanded=True):
+with st.expander("1. Origen y Destino", expanded=True):
     col_a, col_b = st.columns(2)
     with col_a:
         depto_o = st.selectbox("Dpto. Origen", sorted(df_uy['departamento'].unique()), index=10)
@@ -43,24 +43,24 @@ c2 = re.findall(r"[-+]?\d*\.\d+|\d+", wkt_d)
 dist_lineal = ((float(c1[0])-float(c2[0]))**2 + (float(c1[1])-float(c2[1]))**2)**0.5
 distancia_km = round((dist_lineal / 1000) * 1.25)
 
-# --- DETALLES DEL SERVICIO ---
-with st.expander("2. Detalles de la Embarcación y Adicionales", expanded=True):
-    st.info(f"📍 Distancia estimada: **{distancia_km} km** (Solo ida)")
+# --- DETALLES DEL SERVICIO Y FOTO ---
+with st.expander("2. Información de la Embarcación (SUBIR FOTO AQUÍ)", expanded=True):
+    st.write("### 📸 Paso Obligatorio")
+    # ESTA ES LA OPCIÓN QUE BUSCABAS PARA LA FOTO:
+    foto = st.file_uploader("Haga clic aquí para subir la foto de su embarcación", type=['jpg', 'png', 'jpeg'])
+    
+    if foto:
+        st.image(foto, caption="Vista previa de la embarcación", width=300)
+        st.success("✅ Foto cargada correctamente.")
+    else:
+        st.warning("⚠️ Por favor, suba una foto para que podamos verificar que la lancha sea de hasta 40 pies.")
+
     col1, col2 = st.columns(2)
     with col1:
-        tipo_barco = st.selectbox("Tamaño de Embarcación", ["Lancha chica", "Crucero mediano", "Embarcación Grande (Hasta 40 pies / 10 Ton)"])
-        foto = st.file_uploader("📸 Subir foto para verificación de medidas (Obligatorio)", type=['jpg', 'png'])
+        tipo_barco = st.selectbox("Categoría", ["Lancha hasta 27 pies", "Embarcación Grande (28 a 40 pies / 10 Ton)"])
     with col2:
-        usa_trailer = st.toggle("Alquiler Trailer Especial (Hasta 40 pies / 10 Ton) - $8.000")
+        usa_trailer = st.toggle("Alquiler Trailer Especial (Hasta 40 pies) - $8.000")
         es_premium = st.toggle("Servicio Premium / 24hs (+15%)")
-        
-        if es_premium:
-            st.warning("""
-            **¿Qué incluye el Servicio Premium?**
-            * ✅ **Prioridad Total:** Despacho inmediato.
-            * ✅ **Disponibilidad 24hs:** Traslados nocturnos o en feriados.
-            * ✅ **Gestión Directa:** Seguimiento en tiempo real del traslado.
-            """)
 
 # --- CÁLCULO DE COSTOS ---
 distancia_total = distancia_km * 2
@@ -72,9 +72,17 @@ total = base_operativa + (distancia_total * precio_km) + peajes
 if usa_trailer: total += 8000
 if es_premium: total *= 1.15
 
-# --- RESULTADOS ---
+# --- RESULTADOS Y ENVÍO A WHATSAPP ---
 st.success(f"### TOTAL ESTIMADO: ${int(total):,} UYU")
-st.caption(f"Incluye trayecto completo (Ida y Vuelta) y peajes estimados.")
+
+# Lógica del mensaje de WhatsApp para Leonardo (+598 99417716)
+mensaje = f"Hola Leonardo, solicito presupuesto: \n📍 Ruta: {ciudad_o} a {ciudad_d} \n🚢 Barco: {tipo_barco} \n🚛 Trailer: {'Sí' if usa_trailer else 'No'} \n✨ Premium: {'Sí' if es_premium else 'No'} \n💰 Total: ${int(total):,} UYU. \n(Adjunto envío el presupuesto PDF y la foto)"
+mensaje_url = urllib.parse.quote(mensaje)
+whatsapp_link = f"https://wa.me/59899417716?text={mensaje_url}"
+
+col_pdf, col_wa = st.columns(2)
+with col_wa:
+    st.link_button("📲 ENVIAR A MI WHATSAPP (LEONARDO)", whatsapp_link, type="primary")
 
 # --- GENERADOR DE PDF ---
 def crear_pdf():
@@ -84,16 +92,18 @@ def crear_pdf():
     pdf.cell(200, 10, "CONEXIÓN LOGÍSTICA SUR - COTIZACIÓN", ln=True, align='C')
     pdf.set_font("Arial", '', 12)
     pdf.ln(10)
-    pdf.cell(200, 10, f"Ruta: {ciudad_o} ({depto_o}) a {ciudad_d} ({depto_d})", ln=True)
-    pdf.cell(200, 10, f"Embarcación: {tipo_barco}", ln=True)
+    pdf.cell(200, 10, f"Gestionado por: Leonardo Olivera", ln=True)
+    pdf.cell(200, 10, f"Ruta: {ciudad_o} a {ciudad_d} ({distancia_km} km)", ln=True)
+    pdf.cell(200, 10, f"Detalle: {tipo_barco}", ln=True)
     if usa_trailer: pdf.cell(200, 10, "Servicio: Incluye Trailer Especial (Hasta 40 pies)", ln=True)
-    if es_premium: pdf.cell(200, 10, "Incluye: Servicio Premium (Atención 24hs y Prioridad)", ln=True)
+    if es_premium: pdf.cell(200, 10, "Incluye: Servicio Premium (Atención 24hs)", ln=True)
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(200, 10, f"TOTAL: ${int(total)} UYU", ln=True)
-    pdf.ln(10)
     pdf.set_font("Arial", 'I', 9)
-    pdf.multi_cell(0, 5, "Nota: El alquiler del trailer es de hasta 200 USD ($8.000) por 24hs. Precios sujetos a verificación de medidas.")
+    pdf.ln(10)
+    pdf.multi_cell(0, 5, "Nota: Esta cotización es preliminar hasta verificar la foto enviada por WhatsApp.")
     return pdf.output(dest='S').encode('latin-1')
 
-st.download_button("📥 DESCARGAR COTIZACIÓN PDF", data=crear_pdf(), file_name=f"Cotizacion_CLS_{ciudad_d}.pdf")
+with col_pdf:
+    st.download_button("📥 DESCARGAR PDF PARA ADJUNTAR", data=crear_pdf(), file_name=f"Cotizacion_CLS.pdf")
